@@ -33,16 +33,20 @@ var PageHeadingFromLinks = /** @class */ (function (_super) {
   // When opening any blank file, insert a H1 tag into the page constructed
   // from its filename
   PageHeadingFromLinks.prototype.insertHeadingFromBasename = function(openedFile) {
-    var activeLeaf = app.workspace.activeLeaf;
-    var editor = activeLeaf.view.sourceMode.cmEditor
-    var doc = editor.getDoc();
-    var line = doc.getLine(0);
+    // Make sure it's a Markdown file, not an image attachment etc.
+    var view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+    
+    if (view !== null) {
+      var editor = view.sourceMode.cmEditor;
 
-    if (line == "") {
-      var basename = openedFile.basename;
-      var heading = "# " + basename + "\n\n";
-      var cursor = doc.getCursor();
-      doc.replaceRange(heading, cursor);
+      // Only update blank files
+      if (view.data === '') {
+        var basename = view.file.basename;
+        var heading = "# " + basename + "\n\n";
+        var doc = editor.getDoc();
+        var cursor = doc.getCursor();
+        doc.replaceRange(heading, cursor);
+      }
     }
   }
 
