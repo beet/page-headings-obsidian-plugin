@@ -46,7 +46,7 @@ var PageHeadingFromLinks = /** @class */ (function (_super) {
       // Only update blank files
       if (view.data === '') {
         var basename = view.file.basename;
-        var heading = "# " + capitalizeFirstLetter(basename.replace("_", " ")) + "\n\n";
+        var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
         var doc = editor.getDoc();
         var cursor = doc.getCursor();
         doc.replaceRange(heading, cursor);
