@@ -15,6 +15,10 @@ function __extends(d, b) {
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 }
 
+function capitalizeFirstLetter(string) {
+  return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
 var PageHeadingFromLinks = /** @class */ (function (_super) {
   __extends(PageHeadingFromLinks, _super);
 
@@ -35,14 +39,14 @@ var PageHeadingFromLinks = /** @class */ (function (_super) {
   PageHeadingFromLinks.prototype.insertHeadingFromBasename = function(openedFile) {
     // Make sure it's a Markdown file, not an image attachment etc.
     var view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
-    
+
     if (view !== null) {
       var editor = view.sourceMode.cmEditor;
 
       // Only update blank files
       if (view.data === '') {
         var basename = view.file.basename;
-        var heading = "# " + basename + "\n\n";
+        var heading = "# " + capitalizeFirstLetter(basename.replace("_", " ")) + "\n\n";
         var doc = editor.getDoc();
         var cursor = doc.getCursor();
         doc.replaceRange(heading, cursor);
