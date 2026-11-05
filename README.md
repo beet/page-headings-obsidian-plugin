@@ -16,6 +16,23 @@ The page header is given by the filename and the following transformations:
 
 For example, `this_is_my_filename.md` creates the title `This is my filename`.
 
+## Interaction with templates (e.g. Templater)
+
+If a new file is still blank when opened, but something else — most often a
+Templater folder/file template applied automatically on creation — adds
+content to it shortly afterward, this plugin waits for that to finish
+before deciding what to do, rather than racing it (Templater's own render
+time is open-ended, so there's no fixed delay that would reliably be "long
+enough").
+
+If the file is still blank once things settle, the heading is inserted as
+usual. If something else has already added content by then, this plugin
+leaves the file alone entirely rather than inserting a heading on top of it.
+This avoids a duplicate heading in the common case where a template already
+includes one (e.g. a Templater template containing `# <% tp.file.title %>`),
+at the cost of this plugin not adding its heading if your template happens
+not to include one of its own.
+
 ## Todo
 
 - [ ] Expose a hotkey/command to insert headings into existing notes that don't have a heading?
