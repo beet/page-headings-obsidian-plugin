@@ -74,21 +74,93 @@ class PageHeadingFromLinks extends obsidian.Plugin {
     var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
 
     try {
-      await this.insertHeadingWhenSettled(openedFile, heading);
+      if (this.isTemplaterTarget(openedFile)) {
+        // Templater is configured to template this exact folder. When it
+        // applies a folder template to a file that's open in the active
+        // editor, it merges by reading the editor's *current* buffer and
+        // concatenating it with the rendered template -- blindly, with no
+        // deduplication. If our heading lands in that buffer before
+        // Templater reads it, the duplicate is baked in by Templater
+        // itself; no amount of waiting-then-fixing-up on our side can undo
+        // that afterwards. So don't touch the file at all until Templater
+        // reports it has actually finished.
+        await this.insertHeadingAfterTemplaterSettles(openedFile, heading);
+      } else {
+        await this.insertHeadingWhenSettled(openedFile, heading);
+      }
     } finally {
       this.pendingFiles.delete(openedFile.path);
     }
   }
 
-  // Another plugin (e.g. Rapid Notes' Templater integration) may also be
-  // populating this same newly created file, asynchronously and on its own
-  // schedule -- its template render time is open-ended, so there's no fixed
-  // delay that's reliably "long enough" to wait before acting. Instead,
-  // watch the file and only act once nothing has modified it for a short
-  // quiet period, then prepend the heading to whatever is there by then.
-  // Being the last writer this way avoids both losing our own write to a
-  // later overwrite, and clobbering content a slower writer hasn't
-  // finished adding yet.
+  // Whether Templater (if installed) is configured to auto-apply a
+  // template to this exact file -- the specific scenario where we must not
+  // write anything before Templater is done, see insertHeadingFromBasename.
+  isTemplaterTarget(file) {
+    var templater = this.app.plugins.plugins['templater-obsidian'];
+    if (!templater || !templater.settings) {
+      return false;
+    }
+
+    var parentPath = file.parent ? file.parent.path : '';
+    var folderTemplates = templater.settings.folder_templates || [];
+
+    return folderTemplates.some(function (entry) {
+      return entry.folder === parentPath;
+    });
+  }
+
+  // Wait for Templater to report it has finished applying a template to
+  // this file (it fires this event after its own write/merge has already
+  // landed), then insert the heading only if the file is still genuinely
+  // blank -- if Templater populated it, that content very often already
+  // includes its own heading, and this plugin's job is to fill in blank
+  // pages, not to edit pages something else has already filled in. Falls
+  // back to a generous timeout in case Templater ends up not acting on
+  // this file after all (disabled, a cancelled prompt, etc.).
+  insertHeadingAfterTemplaterSettles(file, heading) {
+    var app = this.app;
+
+    return new Promise((resolve) => {
+      var done = false;
+      var maxTimer = null;
+      var refs = [];
+
+      var finish = () => {
+        if (done) {
+          return;
+        }
+        done = true;
+        clearTimeout(maxTimer);
+        refs.forEach(function (ref) {
+          app.workspace.offref(ref);
+        });
+
+        app.vault.process(file, (data) => (data === '' ? heading : data))
+          .then(resolve, resolve);
+      };
+
+      var onTemplaterEvent = (payload) => {
+        if (payload && payload.file && payload.file.path === file.path) {
+          finish();
+        }
+      };
+
+      ['templater:new-note-from-template', 'templater:create-from-template', 'templater:overwrite-file'].forEach(function (eventName) {
+        refs.push(app.workspace.on(eventName, onTemplaterEvent));
+      });
+
+      maxTimer = setTimeout(finish, MAX_WAIT_MS);
+    });
+  }
+
+  // Another plugin may also be populating this same newly created file,
+  // asynchronously and on its own schedule, with open-ended timing -- so
+  // there's no fixed delay that's reliably "long enough" to wait before
+  // acting. Instead, watch the file and only act once nothing has modified
+  // it for a short quiet period, then insert into whatever is there by
+  // then. Being the last writer this way avoids losing our own write to a
+  // later overwrite.
   insertHeadingWhenSettled(file, heading) {
     var app = this.app;
 
@@ -107,7 +179,10 @@ class PageHeadingFromLinks extends obsidian.Plugin {
         clearTimeout(maxTimer);
         app.vault.offref(modifyRef);
 
-        app.vault.process(file, (data) => (data.startsWith(heading) ? data : heading + data))
+        // Only insert if the file is still genuinely blank once settled.
+        // If something else populated it in the meantime, leave it alone
+        // entirely rather than prepending.
+        app.vault.process(file, (data) => (data === '' ? heading : data))
           .then(resolve, resolve);
       };
 
