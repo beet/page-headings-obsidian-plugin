@@ -51,14 +51,19 @@ class PageHeadingFromLinks extends obsidian.Plugin {
 
     var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
 
-    // Write directly to the file rather than an editor buffer. file-open
+    // Write directly to the file rather than an editor buffer: file-open
     // can fire while Obsidian (or another plugin) is still settling the
-    // new file's creation and the leaf/view showing it; editing the
-    // editor's in-memory buffer at that moment can lose the race against
+    // new file's creation and the leaf/view showing it, and editing the
+    // editor's in-memory buffer at that moment can lose a race against
     // Obsidian's own sync and get silently clobbered back to blank.
-    // Modifying the file itself has no such race: whatever view ends up
-    // displaying it, now or later, just reads this content when it loads.
-    await this.app.vault.modify(openedFile, heading);
+    //
+    // Use process() rather than modify() so this is a non-destructive
+    // prepend, not a blind overwrite: another plugin (e.g. Rapid Notes'
+    // Templater integration) may also be writing a template into this same
+    // newly created file around the same time, and overwriting the file's
+    // full contents with just the heading would erase that template
+    // content if its write happened to land first.
+    await this.app.vault.process(openedFile, (data) => heading + data);
   }
 
   // When a still-blank "Untitled" note is renamed to its real name, insert
