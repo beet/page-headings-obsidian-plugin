@@ -30,7 +30,7 @@ class PageHeadingFromLinks extends obsidian.Plugin {
 
   // When opening any blank file, insert a H1 tag into the page constructed
   // from its filename
-  insertHeadingFromBasename(openedFile) {
+  async insertHeadingFromBasename(openedFile) {
     // Make sure it's a Markdown file, not an image attachment etc.
     if (!(openedFile instanceof obsidian.TFile) || openedFile.extension !== 'md') {
       return;
@@ -54,7 +54,7 @@ class PageHeadingFromLinks extends obsidian.Plugin {
       return;
     }
 
-    var view = this.findMarkdownViewForFile(openedFile);
+    var view = await this.findMarkdownViewForFile(openedFile);
 
     if (view !== null) {
       var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
@@ -67,22 +67,54 @@ class PageHeadingFromLinks extends obsidian.Plugin {
   // opened: e.g. opening a link in a new tab can fire file-open before that
   // tab becomes the active leaf. Search all markdown leaves for the one
   // actually displaying this file.
-  findMarkdownViewForFile(file) {
-    var activeView = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+  async findMarkdownViewForFile(file) {
+    var activeLeaf = this.app.workspace.activeLeaf;
 
-    if (activeView !== null && activeView.file === file) {
-      return activeView;
+    if (activeLeaf !== null) {
+      var activeMatch = await this.resolveLeafViewForFile(activeLeaf, file);
+      if (activeMatch !== null) {
+        return activeMatch;
+      }
     }
 
-    var match = null;
+    var leaves = this.app.workspace.getLeavesOfType('markdown');
 
-    this.app.workspace.getLeavesOfType('markdown').forEach(function (leaf) {
-      if (match === null && leaf.view instanceof obsidian.MarkdownView && leaf.view.file === file) {
-        match = leaf.view;
+    for (var i = 0; i < leaves.length; i++) {
+      if (leaves[i] === activeLeaf) {
+        continue;
       }
-    });
 
-    return match;
+      var match = await this.resolveLeafViewForFile(leaves[i], file);
+      if (match !== null) {
+        return match;
+      }
+    }
+
+    return null;
+  }
+
+  // Since Obsidian 1.7.2, a leaf's view can start out as a lightweight
+  // "deferred" placeholder until its tab is actually rendered (e.g. a
+  // just-opened background tab, or even the active tab in some cases), so
+  // leaf.view may not yet be a MarkdownView and won't expose .file. Such a
+  // leaf's last-known view state still names the file, so use that to spot
+  // a likely match and force it to load before giving up on this leaf.
+  async resolveLeafViewForFile(leaf, file) {
+    if (leaf.view instanceof obsidian.MarkdownView) {
+      return leaf.view.file === file ? leaf.view : null;
+    }
+
+    var viewState = leaf.getViewState();
+
+    if (viewState.type !== 'markdown' || !viewState.state || viewState.state.file !== file.path) {
+      return null;
+    }
+
+    if (typeof leaf.loadIfDeferred === 'function') {
+      await leaf.loadIfDeferred();
+    }
+
+    return leaf.view instanceof obsidian.MarkdownView && leaf.view.file === file ? leaf.view : null;
   }
 
   // When a still-blank "Untitled" note is renamed to its real name, insert
