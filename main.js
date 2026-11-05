@@ -36,12 +36,7 @@ class PageHeadingFromLinks extends obsidian.Plugin {
       return;
     }
 
-    // Only act on files that are genuinely empty on disk. Checking the
-    // file's size (vault metadata, available synchronously) rather than the
-    // editor's in-memory buffer avoids a race where file-open fires before
-    // the editor has finished loading existing content: reading the buffer
-    // too early would see '' for a populated file and overwrite it with
-    // just the heading.
+    // Only act on files that are genuinely empty on disk.
     if (openedFile.stat.size !== 0) {
       return;
     }
@@ -54,67 +49,16 @@ class PageHeadingFromLinks extends obsidian.Plugin {
       return;
     }
 
-    var view = await this.findMarkdownViewForFile(openedFile);
+    var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
 
-    if (view !== null) {
-      var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
-      var cursor = view.editor.getCursor();
-      view.editor.replaceRange(heading, cursor);
-    }
-  }
-
-  // The active view isn't always the one showing the file that just
-  // opened: e.g. opening a link in a new tab can fire file-open before that
-  // tab becomes the active leaf. Search all markdown leaves for the one
-  // actually displaying this file.
-  async findMarkdownViewForFile(file) {
-    var activeLeaf = this.app.workspace.activeLeaf;
-
-    if (activeLeaf !== null) {
-      var activeMatch = await this.resolveLeafViewForFile(activeLeaf, file);
-      if (activeMatch !== null) {
-        return activeMatch;
-      }
-    }
-
-    var leaves = this.app.workspace.getLeavesOfType('markdown');
-
-    for (var i = 0; i < leaves.length; i++) {
-      if (leaves[i] === activeLeaf) {
-        continue;
-      }
-
-      var match = await this.resolveLeafViewForFile(leaves[i], file);
-      if (match !== null) {
-        return match;
-      }
-    }
-
-    return null;
-  }
-
-  // Since Obsidian 1.7.2, a leaf's view can start out as a lightweight
-  // "deferred" placeholder until its tab is actually rendered (e.g. a
-  // just-opened background tab, or even the active tab in some cases), so
-  // leaf.view may not yet be a MarkdownView and won't expose .file. Such a
-  // leaf's last-known view state still names the file, so use that to spot
-  // a likely match and force it to load before giving up on this leaf.
-  async resolveLeafViewForFile(leaf, file) {
-    if (leaf.view instanceof obsidian.MarkdownView) {
-      return leaf.view.file === file ? leaf.view : null;
-    }
-
-    var viewState = leaf.getViewState();
-
-    if (viewState.type !== 'markdown' || !viewState.state || viewState.state.file !== file.path) {
-      return null;
-    }
-
-    if (typeof leaf.loadIfDeferred === 'function') {
-      await leaf.loadIfDeferred();
-    }
-
-    return leaf.view instanceof obsidian.MarkdownView && leaf.view.file === file ? leaf.view : null;
+    // Write directly to the file rather than an editor buffer. file-open
+    // can fire while Obsidian (or another plugin) is still settling the
+    // new file's creation and the leaf/view showing it; editing the
+    // editor's in-memory buffer at that moment can lose the race against
+    // Obsidian's own sync and get silently clobbered back to blank.
+    // Modifying the file itself has no such race: whatever view ends up
+    // displaying it, now or later, just reads this content when it loads.
+    await this.app.vault.modify(openedFile, heading);
   }
 
   // When a still-blank "Untitled" note is renamed to its real name, insert
