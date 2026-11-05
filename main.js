@@ -31,25 +31,26 @@ var PageHeadingFromLinks = /** @class */ (function (_super) {
 
     console.log("Loading PageHeadingFromLinks plugin");
 
-    this.registerEvent(app.workspace.on('file-open', _this.insertHeadingFromBasename));
+    this.registerEvent(this.app.workspace.on('file-open', function (openedFile) {
+      _this.insertHeadingFromBasename(openedFile);
+    }));
   };
 
   // When opening any blank file, insert a H1 tag into the page constructed
   // from its filename
   PageHeadingFromLinks.prototype.insertHeadingFromBasename = function(openedFile) {
     // Make sure it's a Markdown file, not an image attachment etc.
-    var view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+    var view = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
 
     if (view !== null) {
-      var editor = view.sourceMode.cmEditor;
+      var editor = view.editor;
 
       // Only update blank files
       if (view.data === '') {
         var basename = view.file.basename;
         var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
-        var doc = editor.getDoc();
-        var cursor = doc.getCursor();
-        doc.replaceRange(heading, cursor);
+        var cursor = editor.getCursor();
+        editor.replaceRange(heading, cursor);
       }
     }
   }
