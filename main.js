@@ -75,13 +75,35 @@ var PageHeadingFromLinks = /** @class */ (function (_super) {
       return;
     }
 
-    var view = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+    var view = this.findMarkdownViewForFile(openedFile);
 
-    if (view !== null && view.file === openedFile) {
+    if (view !== null) {
       var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
       var cursor = view.editor.getCursor();
       view.editor.replaceRange(heading, cursor);
     }
+  }
+
+  // The active view isn't always the one showing the file that just
+  // opened: e.g. opening a link in a new tab can fire file-open before that
+  // tab becomes the active leaf. Search all markdown leaves for the one
+  // actually displaying this file.
+  PageHeadingFromLinks.prototype.findMarkdownViewForFile = function(file) {
+    var activeView = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+
+    if (activeView !== null && activeView.file === file) {
+      return activeView;
+    }
+
+    var match = null;
+
+    this.app.workspace.getLeavesOfType('markdown').forEach(function (leaf) {
+      if (match === null && leaf.view instanceof obsidian.MarkdownView && leaf.view.file === file) {
+        match = leaf.view;
+      }
+    });
+
+    return match;
   }
 
   // When a still-blank "Untitled" note is renamed to its real name, insert
