@@ -19,6 +19,12 @@ function capitalizeFirstLetter(string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
+// Obsidian names new notes (e.g. from "New note" / Cmd+N) "Untitled",
+// "Untitled 1", etc. before the user has had a chance to rename them.
+function isUntitledName(basename) {
+  return /^Untitled( \d+)?$/.test(basename);
+}
+
 var PageHeadingFromLinks = /** @class */ (function (_super) {
   __extends(PageHeadingFromLinks, _super);
 
@@ -34,6 +40,13 @@ var PageHeadingFromLinks = /** @class */ (function (_super) {
     this.registerEvent(this.app.workspace.on('file-open', function (openedFile) {
       _this.insertHeadingFromBasename(openedFile);
     }));
+
+    // New notes are created as "Untitled" with the filename field open for
+    // editing, so insertHeadingFromBasename defers them; pick those up once
+    // the user commits a real name.
+    this.registerEvent(this.app.vault.on('rename', function (file, oldPath) {
+      _this.handleRename(file, oldPath);
+    }));
   };
 
   // When opening any blank file, insert a H1 tag into the page constructed
@@ -44,14 +57,35 @@ var PageHeadingFromLinks = /** @class */ (function (_super) {
 
     if (view !== null) {
       var editor = view.editor;
+      var basename = view.file.basename;
 
-      // Only update blank files
-      if (view.data === '') {
-        var basename = view.file.basename;
+      // Only update blank files, and leave still-untitled new notes alone
+      // until they're renamed (see handleRename)
+      if (view.data === '' && !isUntitledName(basename)) {
         var heading = "# " + capitalizeFirstLetter(basename.replaceAll("_", " ")) + "\n\n";
         var cursor = editor.getCursor();
         editor.replaceRange(heading, cursor);
       }
+    }
+  }
+
+  // When a still-blank "Untitled" note is renamed to its real name, insert
+  // the heading now that we have a meaningful filename to build it from
+  PageHeadingFromLinks.prototype.handleRename = function(file, oldPath) {
+    if (!(file instanceof obsidian.TFile) || file.extension !== 'md') {
+      return;
+    }
+
+    var oldBasename = oldPath.split('/').pop().replace(/\.md$/, '');
+
+    if (!isUntitledName(oldBasename)) {
+      return;
+    }
+
+    var view = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+
+    if (view !== null && view.file === file && view.data === '') {
+      this.insertHeadingFromBasename(file);
     }
   }
 
