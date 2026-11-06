@@ -16,6 +16,14 @@ The page header is given by the filename and the following transformations:
 
 For example, `this_is_my_filename.md` creates the title `This is my filename`.
 
+## Skipping Daily Notes
+
+If the core Daily Notes plugin is enabled, this plugin skips inserting a
+heading into notes created in its configured folder by default — useful if
+your daily note's filename already is the date and you don't want a
+duplicate heading. This can be turned off in the plugin's settings if you do
+want a heading inserted into your daily notes.
+
 ## Interaction with templates (e.g. Templater)
 
 If a new file is still blank when opened, but something else — most often a

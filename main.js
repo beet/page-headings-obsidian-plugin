@@ -20,9 +20,39 @@ function isUntitledName(basename) {
   return /^Untitled( \d+)?$/.test(basename);
 }
 
+var DEFAULT_SETTINGS = {
+  skipDailyNotes: true
+};
+
+class PageHeadingSettingTab extends obsidian.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+
+  display() {
+    var containerEl = this.containerEl;
+    containerEl.empty();
+
+    new obsidian.Setting(containerEl)
+      .setName('Skip daily notes')
+      .setDesc('Don\'t insert a heading into notes created in the folder configured for the Daily Notes core plugin.')
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.skipDailyNotes);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.skipDailyNotes = value;
+          await this.plugin.saveSettings();
+        });
+      });
+  }
+}
+
 class PageHeadingFromLinks extends obsidian.Plugin {
-  onload() {
+  async onload() {
     console.log("Loading PageHeadingFromLinks plugin");
+
+    await this.loadSettings();
+    this.addSettingTab(new PageHeadingSettingTab(this.app, this));
 
     // Files currently being watched for insertion, keyed by path, so
     // file-open firing again (or handleRename) doesn't start a second,
@@ -45,6 +75,14 @@ class PageHeadingFromLinks extends obsidian.Plugin {
     this.pendingFiles.clear();
   }
 
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
   // When opening any blank file, insert a H1 tag into the page constructed
   // from its filename
   async insertHeadingFromBasename(openedFile) {
@@ -63,6 +101,10 @@ class PageHeadingFromLinks extends obsidian.Plugin {
     // Leave still-untitled new notes alone until they're renamed (see
     // handleRename)
     if (isUntitledName(basename)) {
+      return;
+    }
+
+    if (this.settings.skipDailyNotes && this.isDailyNoteFile(openedFile)) {
       return;
     }
 
@@ -91,6 +133,23 @@ class PageHeadingFromLinks extends obsidian.Plugin {
     } finally {
       this.pendingFiles.delete(openedFile.path);
     }
+  }
+
+  // Whether this file lives in the folder the core Daily Notes plugin is
+  // configured to create notes in -- used to skip daily notes by default,
+  // since users who rely on the filename-as-date convention typically don't
+  // want a heading duplicating that date.
+  isDailyNoteFile(file) {
+    var dailyNotes = this.app.internalPlugins.getPluginById('daily-notes');
+    if (!dailyNotes || !dailyNotes.enabled || !dailyNotes.instance) {
+      return false;
+    }
+
+    var options = dailyNotes.instance.options || {};
+    var folder = (options.folder || '').replace(/\/+$/, '');
+    var parentPath = file.parent ? file.parent.path : '';
+
+    return parentPath === folder;
   }
 
   // Whether Templater (if installed) is configured to auto-apply a
